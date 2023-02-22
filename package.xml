@@ -53,7 +53,6 @@
   <build_depend>detection_msgs</build_depend>
   <build_depend>mavros</build_depend>
   <build_depend>mavros_msgs</build_depend>
-  <build_depend>px4</build_depend>
   <build_depend>roscpp</build_depend>
   <build_depend>rosmsg</build_depend>
   <build_depend>rospy</build_depend>
@@ -65,7 +64,6 @@
   <build_export_depend>detection_msgs</build_export_depend>
   <build_export_depend>mavros</build_export_depend>
   <build_export_depend>mavros_msgs</build_export_depend>
-  <build_export_depend>px4</build_export_depend>
   <build_export_depend>roscpp</build_export_depend>
   <build_export_depend>rosmsg</build_export_depend>
   <build_export_depend>rospy</build_export_depend>
@@ -77,7 +75,6 @@
   <exec_depend>detection_msgs</exec_depend>
   <exec_depend>mavros</exec_depend>
   <exec_depend>mavros_msgs</exec_depend>
-  <exec_depend>px4</exec_depend>
   <exec_depend>roscpp</exec_depend>
   <exec_depend>rosmsg</exec_depend>
   <exec_depend>rospy</exec_depend>

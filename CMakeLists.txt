@@ -12,7 +12,6 @@ find_package(catkin REQUIRED COMPONENTS
   detection_msgs
   mavros
   mavros_msgs
-  px4
   roscpp
   rosmsg
   rospy
@@ -114,7 +113,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES safe_landing
-#  CATKIN_DEPENDS cv_bridge detection_msgs mavros mavros_msgs px4 roscpp rosmsg rospy std_msgs yolov5_ros yolov6_ros yolov7_ros
+#  CATKIN_DEPENDS cv_bridge detection_msgs mavros mavros_msgs roscpp rosmsg rospy std_msgs yolov5_ros yolov6_ros yolov7_ros
 #  DEPENDS system_lib
 )
 
@@ -168,10 +167,10 @@ include_directories(
 
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
-# catkin_install_python(PROGRAMS
-#   scripts/my_python_script
-#   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+catkin_install_python(PROGRAMS
+  scripts/offboard_control.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
