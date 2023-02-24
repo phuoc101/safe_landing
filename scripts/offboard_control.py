@@ -11,7 +11,8 @@ import numpy.linalg as la
 import rospy
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import State
-from mavros_msgs.srv import CommandBool, CommandTOL, SetMode
+from mavros_msgs.srv import CommandTOL
+from detection_msgs.msg import BoundingBoxesDist
 
 
 class OffboardNode:
@@ -39,6 +40,8 @@ class OffboardNode:
         # Define safety parameters for landing (TODO: For takeoff as well)
         self.pos_b4_landing = np.array([0, 0, 0.3])  # position to move to before auto landing
         self.safe_position = np.array([0, 0, 3])  # Will hover at this position if human is detected
+        self.safe_dist = 2  # If some people is in close vicinity, don't land (TODO: other objects, but need more data)
+        self.targets = ["person"]
         # Define FLAGS
         self.OFFBOARD = False  # Flag turns on when flight mode is offboard
         self.ARMED = False  # Flag turns on when drone is armed
@@ -46,6 +49,7 @@ class OffboardNode:
         self.LANDED = False  # Flag turns on when mission is completed
 
     def ros_setup(self):
+        # ======PX4======
         # Create subscriber to check current state autopilot
         self.state_sub = rospy.Subscriber("mavros/state", State, self.state_callback)
         # Create publisher to publish commanded local position
@@ -55,6 +59,10 @@ class OffboardNode:
         # Create client to request landing (TODO: may omit this and just land with controller in real testing)
         self.landing_client = rospy.ServiceProxy("mavros/cmd/land", CommandTOL)
         # PX4 has a 500ms timeout between 2 offboard commands
+        # ======Detector======
+        self.detection_topic = rospy.get_param("~detection_topic", "/yolov7/detections_dist")
+        self.detection_sub = rospy.Subscriber(self.detection_topic, BoundingBoxesDist, self.detection_cb)
+
         # Setpoint publishing MUST be faster than 2Hz
         self.rate = rospy.Rate(20)
 
@@ -81,6 +89,11 @@ class OffboardNode:
         """
         current_pos = msg.pose.position
         self.current_local_pos = np.array([current_pos.x, current_pos.y, current_pos.z])
+
+    def detection_cb(self, msg):
+        for box in msg.bounding_boxes:
+            if box.Class in self.targets and box.dist <= self.safe_dist:
+                rospy.logwarn("A person is in close vicinity")
 
     def wait_for_FCU_connection(self):
         """

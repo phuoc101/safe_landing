@@ -25,12 +25,13 @@ class SimImagePublisherNode:
         # Define publishing rate
         self.rate = rospy.Rate(20)  # in Hz
         # Define image source
-        self.source = rospy.get_param("source", default="./img_source/")
+        self.source = rospy.get_param("~source", "./img_source/")
         if os.path.isdir(self.source):
             self.images = sorted(glob(self.source + "*.png"))
             rospy.loginfo(f"images to show: {self.images}")
         else:
-            rospy.logerr("Not a directory, pls put valid source")
+            rospy.logerr(f"{self.source} is not a directory, pls put valid source")
+            return
         self.im_id = 0
         self.frame_id = 0
         # Define image bridge to convert from opencv imgs to ros msgs

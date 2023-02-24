@@ -1,0 +1,30 @@
+<launch>
+  <arg name="detection_topic"                 default="/yolov7/detections_dist" />
+  <arg name="conf_thresh"                     default="0.5" />
+  <arg name="source"                          default="$(find safe_landing)/scripts/img_source/" />
+  <arg name="visualize_yolo"                  default="True" />
+  <arg name="yolo_weights"                    default="weights/yolov7.pt" />
+  <arg name="xgb_weights"                     default="weights/xgb_dist.txt" />
+  <arg name="input_img_topic"                 default="/picam360/image_raw" />
+  <arg name="img_size"                        default="1280" />
+
+  <!-- Main landing monitoring node -->
+  <node name="offboard_node" pkg="safe_landing" type="offboard_control.py" output="screen" >
+     <param name="detection_topic"            value="$(arg detection_topic)" /> 
+  </node>
+
+  <node name="image_publisher" pkg="safe_landing" type="image_publisher.py" output="screen" >
+    <param name="source"                      value="$(arg source)" />
+  </node>
+
+  <!-- Yolov7 node -->
+  <include file="$(find yolov7_ros)/launch/yolov7dist.launch">
+    <arg name="conf_thresh"                   value="$(arg conf_thresh)"/>
+    <arg name="output_topic"                  value="$(arg detection_topic)"/>
+    <arg name="weights"                       value="$(arg yolo_weights)"/>
+    <arg name="xgb_weights"                   value="$(arg xgb_weights)"/>
+    <arg name="visualize"                     value="$(arg xgb_weights)"/>
+    <arg name="input_img_topic"               value="$(arg input_img_topic)"/>
+    <arg name="img_size"                      value="$(arg img_size)"/>
+  </include>
+</launch>
