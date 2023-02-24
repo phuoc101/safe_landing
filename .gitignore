@@ -54,3 +54,10 @@ CATKIN_IGNORE
 *.png
 *.jpeg
 *.jpg
+
+# videos
+*.mkv
+*.mp4
+
+# Recordings
+recordings

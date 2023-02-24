@@ -47,6 +47,9 @@ class OffboardNode:
         self.ARMED = False  # Flag turns on when drone is armed
         self.DANGER = False  # Flag turns on when danger detected
         self.LANDED = False  # Flag turns on when mission is completed
+        self.safe_counter = 0
+        # land with 100 msgs without danger
+        self.safe_counter_threshold = 100
 
     def ros_setup(self):
         # ======PX4======
@@ -81,7 +84,6 @@ class OffboardNode:
             self.OFFBOARD = False
         elif not self.OFFBOARD:
             rospy.loginfo("Vehicle in offboard mode")
-            self.OFFBOARD = True
 
     def current_pos_callback(self, msg):
         """
@@ -91,9 +93,22 @@ class OffboardNode:
         self.current_local_pos = np.array([current_pos.x, current_pos.y, current_pos.z])
 
     def detection_cb(self, msg):
+        """
+        Callback to retrieve and handle hazard detection (currently for landing only.)
+        TODO: do the same for takeoff as well
+        """
         for box in msg.bounding_boxes:
             if box.Class in self.targets and box.dist <= self.safe_dist:
                 rospy.logwarn("A person is in close vicinity")
+                self.safe_counter = 0
+                self.DANGER = True
+                break
+            else:
+                self.safe_counter += 1
+                if self.safe_counter >= self.safe_counter_threshold:
+                    rospy.loginfo("Area is clear")
+                    self.safe_counter = 0
+                    self.DANGER = False
 
     def wait_for_FCU_connection(self):
         """
@@ -129,6 +144,24 @@ class OffboardNode:
 
         # Check that there are steps to take
         next_pos = None
+
+        # # Use this if you don't need to fly smoothly (prob better for real flights)
+        # Get next target position
+        if self.count < self.num_of_pos:
+            next_pos = self.trajectory[self.count]
+            # Check if current position is close to next step
+            if self.position_reached(self.trajectory[self.count]):
+                rospy.loginfo(f"Reached position: {self.trajectory[self.count]}")
+                # Increment step counter
+                self.count += 1
+                if self.count < self.num_of_pos:
+                    rospy.loginfo(f"Moving towards position: {self.trajectory[self.count]}")
+                else:
+                    rospy.loginfo(f"Preparing for landing. Moving towards position: {self.pos_b4_landing}")
+        elif not self.position_reached(self.pos_b4_landing):
+            next_pos = self.pos_b4_landing
+        else:
+            next_pos = None
         # # Use this for smoother flight in simulation
         # # Get next target position
         # current_pos = self.current_local_pos.copy()
@@ -158,24 +191,6 @@ class OffboardNode:
         #
         #     # Compute next incremental step in desired direction
         #     next_pos = current_pos + self.speed_param * unit_vector
-
-        # # Use this if you don't need to fly smoothly (prob better for real flights)
-        # Get next target position
-        if self.count < self.num_of_pos:
-            next_pos = self.trajectory[self.count]
-            # Check if current position is close to next step
-            if self.position_reached(self.trajectory[self.count]):
-                rospy.loginfo(f"Reached position: {self.trajectory[self.count]}")
-                # Increment step counter
-                self.count += 1
-                if self.count < self.num_of_pos:
-                    rospy.loginfo(f"Moving towards position: {self.trajectory[self.count]}")
-                else:
-                    rospy.loginfo(f"Preparing for landing. Moving towards position: {self.pos_b4_landing}")
-        elif not self.position_reached(self.pos_b4_landing):
-            next_pos = self.pos_b4_landing
-        else:
-            next_pos = None
 
         self.target_pos = next_pos
 
@@ -210,6 +225,7 @@ class OffboardNode:
 
             # If a person is detected and is nearby, hover at safe position
             if self.DANGER:
+                rospy.logwarn(f"Person in vicinity, retreat to safe position {self.safe_position}")
                 next_pos = self.safe_position
 
             # Check that we haven't reached end of trajectory (or next_pos isn't None)
