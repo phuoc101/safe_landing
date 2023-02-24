@@ -19,58 +19,44 @@ class OffboardNode:
 
         rospy.init_node("offboard_node", log_level=rospy.INFO)
         rospy.loginfo("Starting OffboardNode.")
-
-        # Create subscriber to check current state autopilot
-        self.state_sub = rospy.Subscriber("mavros/state", State, self.state_callback)
-
-        # Create publisher to publish commanded local position
-        self.local_pos_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
-
-        # Create subscriber to retrieve current local position
-        self.odom_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.current_pos_callback)  # EKF
-
-        # Create client to request arming
-        self.arming_client = rospy.ServiceProxy("mavros/cmd/arming", CommandBool)
-
-        # Create client to request mode change
-        self.set_mode_client = rospy.ServiceProxy("mavros/set_mode", SetMode)
-
-        # Create client to request landing
-        self.landing_client = rospy.ServiceProxy("mavros/cmd/land", CommandTOL)
-
-        # PX4 has a 500ms timeout between 2 offboard commands
-        # Setpoint publishing MUST be faster than 2Hz
-        self.rate = rospy.Rate(20)
-
-        # Define trajectory, last position is the position to prepare for landing, will move to safe position if detect
-        # human
+        # Set up ros params
+        self.ros_setup()
+        # Define mission trajectory
         self.trajectory = np.array([[0.0, 0.0, 4.5]])
-        self.pos_b4_landing = np.array([0, 0, 0.5])
         self.num_of_pos = len(self.trajectory)  # total number of poses in trajectory
-
         # Initialize current state
         self.current_state = State()
-
         # Initialize current position and target to (0, 0, 0)
         self.current_local_pos = np.zeros(3)
         self.target_pos = np.zeros(3)
-
         # Define counter to determine at which pose in the trajectory we're at
         self.count = 0
-
         # Define threshold to determine when next position in trajectory is reached
         self.threshold = 0.2
         self.landing_threshold = 0.01
-
         # Define parameter to choose how fast to move to next position
         self.speed_param = 0.7
+        # Define safety parameters for landing (TODO: For takeoff as well)
+        self.pos_b4_landing = np.array([0, 0, 0.3])  # position to move to before auto landing
+        self.safe_position = np.array([0, 0, 3])  # Will hover at this position if human is detected
+        # Define FLAGS
+        self.OFFBOARD = False  # Flag turns on when flight mode is offboard
+        self.ARMED = False  # Flag turns on when drone is armed
+        self.DANGER = False  # Flag turns on when danger detected
+        self.LANDED = False  # Flag turns on when mission is completed
 
-        # Define safety parameter for takeoff and landing
-        self.emergency = False
-
-        # Will hover at this position if human is detected
-        self.safe_position = np.array([0, 0, 3])
-        self.landed = False
+    def ros_setup(self):
+        # Create subscriber to check current state autopilot
+        self.state_sub = rospy.Subscriber("mavros/state", State, self.state_callback)
+        # Create publisher to publish commanded local position
+        self.local_setpoint_pub = rospy.Publisher("mavros/setpoint_position/local", PoseStamped, queue_size=10)
+        # Create subscriber to retrieve current local position (EKF)
+        self.local_pos_sub = rospy.Subscriber("/mavros/local_position/pose", PoseStamped, self.current_pos_callback)
+        # Create client to request landing (TODO: may omit this and just land with controller in real testing)
+        self.landing_client = rospy.ServiceProxy("mavros/cmd/land", CommandTOL)
+        # PX4 has a 500ms timeout between 2 offboard commands
+        # Setpoint publishing MUST be faster than 2Hz
+        self.rate = rospy.Rate(20)
 
     def state_callback(self, msg):
         """
@@ -78,6 +64,16 @@ class OffboardNode:
         This will allow us to check connection, arming and OFFBOARD flags.
         """
         self.current_state = msg
+        if not msg.armed:
+            self.ARMED = False
+        elif not self.ARMED:
+            rospy.loginfo("Vehicle armed")
+            self.ARMED = True
+        if msg.mode != "OFFBOARD":
+            self.OFFBOARD = False
+        elif not self.OFFBOARD:
+            rospy.loginfo("Vehicle in offboard mode")
+            self.OFFBOARD = True
 
     def current_pos_callback(self, msg):
         """
@@ -104,7 +100,7 @@ class OffboardNode:
         pose.pose.position.x = x
         pose.pose.position.y = y
         pose.pose.position.z = z
-        self.local_pos_pub.publish(pose)
+        self.local_setpoint_pub.publish(pose)
 
     def position_reached(self, target_pos):
         """
@@ -120,6 +116,7 @@ class OffboardNode:
 
         # Check that there are steps to take
         next_pos = None
+        # # Use this for smoother flight in simulation
         # # Get next target position
         # current_pos = self.current_local_pos.copy()
         # if self.count < self.num_of_pos:
@@ -192,13 +189,14 @@ class OffboardNode:
         # "commander arm", then switch to offboard mode with "commander mode offboard"
 
         next_pos = None
+        rospy.loginfo(f"Mission start, first position: {self.get_next_pos()}")
         while not rospy.is_shutdown():
             if self.current_state.mode != "AUTO.LAND":
                 # Retrieve next position to move to
                 next_pos = self.get_next_pos()
 
             # If a person is detected and is nearby, hover at safe position
-            if self.emergency:
+            if self.DANGER:
                 next_pos = self.safe_position
 
             # Check that we haven't reached end of trajectory (or next_pos isn't None)
@@ -209,9 +207,9 @@ class OffboardNode:
             # If we reached the end of the trajectory, land
             if self.count >= self.num_of_pos and self.position_reached(self.pos_b4_landing):
                 self.land()
-                if self.current_local_pos[2] <= self.landing_threshold and self.landed:
+                if self.current_local_pos[2] <= self.landing_threshold and self.LANDED:
                     rospy.loginfo("Landed vehicle, bye!")
-                    self.landed = True
+                    self.LANDED = True
             self.rate.sleep()  # sleeps long enough to maintain desired rate
 
 
