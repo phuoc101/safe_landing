@@ -16,6 +16,9 @@ from safe_landing.flight_mode import FlightMode
 
 class OffboardNode:
     def __init__(self):
+        # Set up ROS
+        self.ros_setup()
+
         # Define counter to determine at which pose in the trajectory we're at
         self.count = 0
         # Define threshold to determine when next position in trajectory is reached
@@ -27,17 +30,13 @@ class OffboardNode:
         self.num_of_pos = len(self.trajectory)  # total number of poses in trajectory
 
         # Define safety parameters for landing (TODO: For takeoff as well)
-        # Danger zone, switch to evasive behavior
-        self.danger_zone_thresh = np.array([0, 0, 2.2])
         # position to move to before auto landing
-        self.prelanding_pos = np.array([0, 0, 0.5])
+        self.prelanding_pos = np.array([0, 0, 1])
         # Will hover at this position if human is detected
         self.safe_position = np.array([0, 0, 3])
         # If some people is in close vicinity, don't land (TODO: animal lives matter, but need more data)
         self.safe_dist = 2
         self.targets_to_avoid = ["person"]
-        self.danger_boxes = []
-        self.k_safe = 1
         # land after enough msgs without danger
         self.safe_counter_threshold = 20
 
@@ -46,12 +45,8 @@ class OffboardNode:
         self.OFFBOARD = False  # Flag turns on when flight mode is offboard
         self.ARMED = False  # Flag turns on when drone is armed
         self.EMERGENCY = True  # Flag turns on when danger detected
-        self.IN_DANGER_ZONE = False  # Flag turns on when drone is in danger zone
         self.LANDED = False  # Flag turns on when mission is completed
         self.safe_counter = 0
-
-        # Set up ROS
-        self.ros_setup()
 
     def ros_setup(self):
         """
@@ -72,7 +67,6 @@ class OffboardNode:
 
         # YOLO Detector
         self.detection_topic = rospy.get_param("~detection_topic", "/yolov7/detections_dist")
-        self.img_size = rospy.get_param("~img_size", "640")
         self.detection_sub = rospy.Subscriber(self.detection_topic, BoundingBoxesDist, self.detection_cb)
 
         # PX4 has a 500ms timeout between 2 offboard commands
@@ -105,15 +99,6 @@ class OffboardNode:
         """
         current_pos = msg.pose.position
         self.current_local_pos = np.array([current_pos.x, current_pos.y, current_pos.z])
-        if (self.flight_mode == FlightMode.PRE_LANDING or self.flight_mode == FlightMode.EMERGENCY_RETREAT) and (
-            current_pos.z >= self.prelanding_pos[2] and current_pos.z <= self.danger_zone_thresh[2]
-        ):
-            if not self.IN_DANGER_ZONE:
-                rospy.logwarn("Entering danger zone")
-            self.IN_DANGER_ZONE = True
-        else:
-            rospy.logdebug(f"Not in danger zone z={current_pos.z}")
-            self.IN_DANGER_ZONE = False
 
     def detection_cb(self, msg):
         """
@@ -253,40 +238,12 @@ class OffboardNode:
                     next_pos = self.prelanding_pos
 
             elif self.flight_mode == FlightMode.EMERGENCY_RETREAT:
-                if not self.IN_DANGER_ZONE:
-                    rospy.logwarn(f"A person is in close vicinity, retreat to safe position {self.safe_position}")
-                    if self.EMERGENCY:
-                        next_pos = self.safe_position
-                    else:
-                        self.flight_mode = FlightMode.PRE_LANDING
-                        next_pos = self.prelanding_pos
+                rospy.logwarn(f"A person is in close vicinity, retreat to safe position {self.safe_position}")
+                if self.EMERGENCY:
+                    next_pos = self.safe_position
                 else:
-                    box_msg = rospy.wait_for_message(self.detection_topic, BoundingBoxesDist)
-                    self.danger_boxes = []
-                    dir_vector = np.zeros(2)
-                    for box in box_msg.bounding_boxes:
-                        if box.dist < self.safe_dist:
-                            # Camera coordinate sys
-                            #
-                            #      | x
-                            #      |
-                            # y____|
-                            # add the center coord and distance
-                            xcenter = (-(float(box.xmax) - float(box.xmin)) + float(self.img_size)) / 2
-                            ycenter = (-(float(box.ymax) - float(box.ymin)) + float(self.img_size)) / 2
-                            dir_vector += np.array([xcenter, ycenter])
-                            rospy.loginfo(f"X : {(-(float(box.xmax) - float(box.xmin))) / 2}")
-                            rospy.loginfo(f"Y : {(-(float(box.ymax) - float(box.ymin))) / 2}")
-                            rospy.loginfo(f"DIR VEC: {dir_vector}")
-                            self.danger_boxes.append([xcenter, ycenter, box.dist])
-                    rospy.logwarn(f"{len(self.danger_boxes)} people nearby")
-                    if self.EMERGENCY:
-                        dir_vector = self.k_safe * dir_vector / np.linalg.norm(dir_vector)
-                        next_pos = np.array([-dir_vector[0], -dir_vector[1], self.safe_position[2]])
-                        rospy.logwarn(f"In danger zone. Retreating to {next_pos}")
-                    else:
-                        self.flight_mode = FlightMode.PRE_LANDING
-                        next_pos = self.prelanding_pos
+                    self.flight_mode = FlightMode.PRE_LANDING
+                    next_pos = self.prelanding_pos
 
             elif self.flight_mode == FlightMode.LANDING:
                 self.land()
