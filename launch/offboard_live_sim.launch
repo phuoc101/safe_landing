@@ -1,0 +1,41 @@
+<launch>
+  <arg name="video_device"                    default="/dev/video2"/>
+  <arg name="detection_topic"                 default="/yolov7/detections_dist" />
+  <arg name="conf_thresh"                     default="0.4" />
+  <arg name="source"                          default="$(find safe_landing)/src/safe_landing/img_source/" />
+  <arg name="visualize_yolo"                  default="True" />
+  <arg name="yolo_weights"                    default="weights/yolov7.pt" />
+  <arg name="xgb_weights"                     default="weights/xgb_dist_torch" />
+  <arg name="input_img_topic"                 default="/picam360/image_cropped" />
+  <arg name="img_size"                        default="640" />
+  <arg name="yaml"                            default="picam_tierankatu_2k.yaml" />
+  <arg name="image_width"                     default="2048"/>
+  <arg name="image_height"                    default="1536"/>
+
+  <!-- Picam node -->
+  <include file="$(find picam_ros)/launch/picam_read_cropped.launch">
+    <arg name="video_device"                  default="$(arg video_device)" /> 
+    <arg name="yaml"                          default="$(arg yaml)" /> 
+    <arg name="image_width"                   default="$(arg image_width)"/>
+    <arg name="image_height"                  default="$(arg image_height)"/>
+  </include>
+  
+
+  <!-- Yolov7 node -->
+  <include file="$(find yolov7_ros)/launch/yolov7dist.launch">
+    <arg name="conf_thresh"                   value="$(arg conf_thresh)"/>
+    <arg name="output_topic"                  value="$(arg detection_topic)"/>
+    <arg name="weights"                       value="$(arg yolo_weights)"/>
+    <arg name="xgb_weights"                   value="$(arg xgb_weights)"/>
+    <arg name="visualize"                     value="$(arg visualize_yolo)"/>
+    <arg name="input_img_topic"               value="$(arg input_img_topic)"/>
+    <arg name="img_size"                      value="$(arg img_size)"/>
+  </include>
+
+  <!-- Main landing monitoring node -->
+  <node name="offboard_node" pkg="safe_landing" type="offboard_control_node.py" output="screen" >
+     <param name="detection_topic"            value="$(arg detection_topic)" /> 
+     <param name="img_size"                   value="$(arg img_size)"/>
+  </node>
+
+</launch>

@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import rospy
 import os
 import sys
@@ -24,18 +22,21 @@ class SimImagePublisherNode:
         self.image_pub = rospy.Publisher("/picam360/image_raw", Image, queue_size=10)
         # Define publishing rate
         self.rate = rospy.Rate(20)  # in Hz
+        self.im_id = 0
+        self.frame_id = 0
         # Define image source
-        self.source = rospy.get_param("~source", "./img_source/")
+        self.source = rospy.get_param(
+            "~source",
+            "/media/phuoc101/imaunicorn/projects/ros_prj/catkin_ws/src/safe_landing/src/safe_landing/img_source/",
+        )
+        # Define image bridge to convert from opencv imgs to ros msgs
+        self.bridge = CvBridge()
         if os.path.isdir(self.source):
             self.images = sorted(glob(self.source + "*.png"))
             rospy.loginfo(f"images to show: {self.images}")
+            self.generate_ros_image()
         else:
             rospy.logerr(f"{self.source} is not a directory, pls put valid source")
-            return
-        self.im_id = 0
-        self.frame_id = 0
-        # Define image bridge to convert from opencv imgs to ros msgs
-        self.bridge = CvBridge()
 
     def generate_ros_image(self):
         """Function to show images, press q to toggle between safe and unsafe image"""
@@ -50,6 +51,9 @@ class SimImagePublisherNode:
                 self.image_pub.publish(image_message)
                 self.rate.sleep()
                 # Press <Space> to toggle image
+                w_vis = 640
+                h_vis = 640
+                cv2_img = cv2.resize(cv2_img, (w_vis, h_vis), cv2.INTER_AREA)
                 cv2.imshow("Original frame", cv2_img)
                 if cv2.waitKey(1) == ord(" "):
                     self.im_id = 0 if self.im_id == -1 else -1
@@ -60,9 +64,4 @@ class SimImagePublisherNode:
 
 
 def main():
-    image_publisher = SimImagePublisherNode()
-    image_publisher.generate_ros_image()
-
-
-if __name__ == "__main__":
-    main()
+    SimImagePublisherNode()
