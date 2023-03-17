@@ -1,5 +1,5 @@
 """
- * File: offb_node.py
+ * File: offboard_control.py
  * Stack and tested in Gazebo 11 SITL
 """
 
@@ -16,8 +16,8 @@ from safe_landing.flight_mode import FlightMode
 
 class OffboardNode:
     def __init__(self):
-        # Set up ROS
-        self.ros_setup()
+
+        rospy.init_node("offboard_node", log_level=rospy.INFO)
 
         # Define counter to determine at which pose in the trajectory we're at
         self.count = 0
@@ -26,16 +26,21 @@ class OffboardNode:
         self.landing_threshold = 0.01
 
         # Define mission trajectory
-        self.trajectory = np.array([[0.0, 0.0, 4.5]])
+        rospy.loginfo("Waiting for home position...")
+        home_msg = rospy.wait_for_message("/mavros/local_position/pose", PoseStamped)
+        self.home_pose = home_msg.pose.position
+        # self.home_ori = home_msg.pose.orientation
+        rospy.loginfo(f"Home position initiated: {self.home_pose}")
+        self.trajectory = np.array([[self.home_pose.x, self.home_pose.y, self.home_pose.z + 4.5]])
         self.num_of_pos = len(self.trajectory)  # total number of poses in trajectory
 
         # Define safety parameters for landing (TODO: For takeoff as well)
         # position to move to before auto landing
-        self.prelanding_pos = np.array([0, 0, 1])
+        self.prelanding_pos = np.array([self.home_pose.x, self.home_pose.y, self.home_pose.z + 1])
         # Will hover at this position if human is detected
-        self.safe_position = np.array([0, 0, 3])
+        self.safe_retreat_position = np.array([self.home_pose.x, self.home_pose.y, self.home_pose.z + 3])
         # If some people is in close vicinity, don't land (TODO: animal lives matter, but need more data)
-        self.safe_dist = 2
+        self.safe_dist = 3
         self.targets_to_avoid = ["person"]
         # land after enough msgs without danger
         self.safe_counter_threshold = 20
@@ -47,6 +52,20 @@ class OffboardNode:
         self.EMERGENCY = True  # Flag turns on when danger detected
         self.LANDED = False  # Flag turns on when mission is completed
         self.safe_counter = 0
+        # Set up ROS
+        self.ros_setup()
+        rospy.loginfo(self.mission_info())
+
+    def mission_info(self):
+        return (
+            "Mission info:\n"
+            + f"Number of waypoints:{self.num_of_pos}\n"
+            + f"Trajectory: {self.trajectory}\n"
+            + f"Prelanding position: {self.prelanding_pos}\n"
+            + f"Safe retreat position: {self.safe_retreat_position}\n"
+            + f"Safety distance from camera: {self.safe_dist}\n"
+            + f"Targets to avoid: {self.targets_to_avoid}"
+        )
 
     def ros_setup(self):
         """
@@ -56,7 +75,6 @@ class OffboardNode:
             - Set up ROS communication with object detector
             - Set up ROS parameters
         """
-        rospy.init_node("offboard_node", log_level=rospy.INFO)
         rospy.loginfo("Starting OffboardNode.")
 
         # PX4/MAVROS
@@ -222,14 +240,14 @@ class OffboardNode:
             elif self.flight_mode == FlightMode.MISSION:
                 if self.count >= self.num_of_pos:
                     self.flight_mode = self.flight_mode.PRE_LANDING
-                    next_pos = self.safe_position
+                    next_pos = self.safe_retreat_position
                 else:
                     next_pos = self.get_next_pos()
 
             elif self.flight_mode == FlightMode.PRE_LANDING:
                 if self.EMERGENCY:
                     self.flight_mode = FlightMode.EMERGENCY_RETREAT
-                    next_pos = self.safe_position
+                    next_pos = self.safe_retreat_position
                 elif self.position_reached(self.prelanding_pos):
                     self.flight_mode = FlightMode.LANDING
                     next_pos = None
@@ -238,9 +256,9 @@ class OffboardNode:
                     next_pos = self.prelanding_pos
 
             elif self.flight_mode == FlightMode.EMERGENCY_RETREAT:
-                rospy.logwarn(f"A person is in close vicinity, retreat to safe position {self.safe_position}")
+                rospy.logwarn(f"A person is in close vicinity, retreat to safe position {self.safe_retreat_position}")
                 if self.EMERGENCY:
-                    next_pos = self.safe_position
+                    next_pos = self.safe_retreat_position
                 else:
                     self.flight_mode = FlightMode.PRE_LANDING
                     next_pos = self.prelanding_pos
@@ -258,5 +276,6 @@ class OffboardNode:
 
 
 def main():
+    rospy.loginfo("STARTING")
     offboard_node = OffboardNode()
     offboard_node.fly()

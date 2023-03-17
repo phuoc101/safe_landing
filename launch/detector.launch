@@ -6,9 +6,10 @@
   <arg name="xgb_weights"                     default="weights/xgb_dist_torch" />
   <arg name="input_img_topic"                 default="/picam360/image_cropped" />
   <arg name="img_size"                        default="1280" />
-  <arg name="yaml"                            default="picam_tierankatu_2k.yaml" />
-  <arg name="image_width"                     default="2048"/>
-  <arg name="image_height"                    default="1536"/>
+  <arg name="yaml"                            default="picam_tierankatu_640.yaml" />
+  <arg name="detection_topic"                 default="/yolov7/detections_dist" />
+  <arg name="image_width"                     default="640"/>
+  <arg name="image_height"                    default="480"/>
 
   <!-- Picam node -->
   <include file="$(find picam_ros)/launch/picam_read_cropped.launch">

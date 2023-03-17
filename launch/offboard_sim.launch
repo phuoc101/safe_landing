@@ -4,7 +4,7 @@
   <arg name="source"                          default="$(find safe_landing)/src/safe_landing/img_source/" />
   <arg name="visualize_yolo"                  default="True" />
   <arg name="yolo_weights"                    default="weights/yolov7.pt" />
-  <arg name="xgb_weights"                     default="weights/xgb_dist.txt" />
+  <arg name="xgb_weights"                     default="weights/xgb_dist_torch" />
   <arg name="input_img_topic"                 default="/picam360/image_raw" />
   <arg name="img_size"                        default="1280" />
 
