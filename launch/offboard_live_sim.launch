@@ -1,5 +1,4 @@
 <launch>
-  <arg name="video_device"                    default="/dev/video2"/>
   <arg name="detection_topic"                 default="/yolov7/detections_dist" />
   <arg name="conf_thresh"                     default="0.4" />
   <arg name="source"                          default="$(find safe_landing)/src/safe_landing/img_source/" />
@@ -8,18 +7,10 @@
   <arg name="xgb_weights"                     default="weights/xgb_dist_torch" />
   <arg name="input_img_topic"                 default="/picam360/image_cropped" />
   <arg name="img_size"                        default="640" />
-  <arg name="yaml"                            default="picam_tierankatu_2k.yaml" />
-  <arg name="image_width"                     default="2048"/>
-  <arg name="image_height"                    default="1536"/>
-
-  <!-- Picam node -->
-  <include file="$(find picam_ros)/launch/picam_read_cropped.launch">
-    <arg name="video_device"                  default="$(arg video_device)" /> 
-    <arg name="yaml"                          default="$(arg yaml)" /> 
-    <arg name="image_width"                   default="$(arg image_width)"/>
-    <arg name="image_height"                  default="$(arg image_height)"/>
-  </include>
-  
+  <arg name="yaml"                            default="picam_tierankatu_640.yaml" />
+  <arg name="image_width"                     default="640"/>
+  <arg name="image_height"                    default="640"/>
+  <arg name="video_device"                    default="/dev/video0"/>
 
   <!-- Yolov7 node -->
   <include file="$(find yolov7_ros)/launch/yolov7dist.launch">
@@ -30,6 +21,7 @@
     <arg name="visualize"                     value="$(arg visualize_yolo)"/>
     <arg name="input_img_topic"               value="$(arg input_img_topic)"/>
     <arg name="img_size"                      value="$(arg img_size)"/>
+    <arg name="video_device"                  value="$(arg video_device)"/>
   </include>
 
   <!-- Main landing monitoring node -->

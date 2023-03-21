@@ -57,9 +57,6 @@
   <build_depend>rosmsg</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>std_msgs</build_depend>
-  <build_depend>yolov5_ros</build_depend>
-  <build_depend>yolov6_ros</build_depend>
-  <build_depend>yolov7_ros</build_depend>
   <build_export_depend>cv_bridge</build_export_depend>
   <build_export_depend>detection_msgs</build_export_depend>
   <build_export_depend>mavros</build_export_depend>
@@ -68,9 +65,6 @@
   <build_export_depend>rosmsg</build_export_depend>
   <build_export_depend>rospy</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
-  <build_export_depend>yolov5_ros</build_export_depend>
-  <build_export_depend>yolov6_ros</build_export_depend>
-  <build_export_depend>yolov7_ros</build_export_depend>
   <exec_depend>cv_bridge</exec_depend>
   <exec_depend>detection_msgs</exec_depend>
   <exec_depend>mavros</exec_depend>
@@ -79,9 +73,6 @@
   <exec_depend>rosmsg</exec_depend>
   <exec_depend>rospy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
-  <exec_depend>yolov5_ros</exec_depend>
-  <exec_depend>yolov6_ros</exec_depend>
-  <exec_depend>yolov7_ros</exec_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

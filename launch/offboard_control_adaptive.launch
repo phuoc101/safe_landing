@@ -1,0 +1,11 @@
+<launch>
+  <arg name="detection_topic"                 default="/yolov7/detections_dist" />
+  <arg name="img_size"                        default="640" />
+
+  <!-- Main landing monitoring node -->
+  <node name="offboard_node" pkg="safe_landing" type="offboard_control_adaptive_node.py" output="screen" >
+     <param name="detection_topic"            value="$(arg detection_topic)" /> 
+     <param name="img_size"                   value="$(arg img_size)"/>
+  </node>
+
+</launch>

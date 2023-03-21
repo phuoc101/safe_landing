@@ -16,9 +16,6 @@ find_package(catkin REQUIRED COMPONENTS
   rosmsg
   rospy
   std_msgs
-  yolov5_ros
-  yolov6_ros
-  yolov7_ros
 )
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -29,7 +26,7 @@ catkin_python_setup()
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES safe_landing
-#  CATKIN_DEPENDS cv_bridge detection_msgs mavros mavros_msgs roscpp rosmsg rospy std_msgs yolov5_ros yolov6_ros yolov7_ros
+#  CATKIN_DEPENDS cv_bridge detection_msgs mavros mavros_msgs roscpp rosmsg rospy std_msgs 
 #  DEPENDS system_lib
 )
 

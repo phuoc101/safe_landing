@@ -41,9 +41,11 @@ class OffboardNode:
         self.safe_retreat_position = np.array([0, 0, 2.5]) + self.home_pos
         # If some people is in close vicinity, don't land (TODO: animal lives matter, but need more data)
         self.safe_dist = 3
+        self.emergency_land_dist = 2
         self.targets_to_avoid = ["person"]
         # land after enough msgs without danger
         self.safe_counter_threshold = 20
+        self.danger_counter_threshold = 100
 
         rospy.loginfo(self.mission_info())
 
@@ -52,8 +54,10 @@ class OffboardNode:
         self.OFFBOARD = False  # Flag turns on when flight mode is offboard
         self.ARMED = False  # Flag turns on when drone is armed
         self.EMERGENCY = True  # Flag turns on when danger detected
+        self.EMERGENCY_LANDING = False  # Flag turns on when target(s) stay too long and need to land
         self.LANDED = False  # Flag turns on when mission is completed
         self.safe_counter = 0
+        self.danger_counter = 0
         # Set up ROS
         self.ros_setup()
 
@@ -88,6 +92,7 @@ class OffboardNode:
         self.landing_client = rospy.ServiceProxy("mavros/cmd/land", CommandTOL)
 
         # YOLO Detector
+        self.img_size = rospy.get_param("~img_size", "640")
         self.detection_topic = rospy.get_param("~detection_topic", "/yolov7/detections_dist")
         self.detection_sub = rospy.Subscriber(self.detection_topic, BoundingBoxesDist, self.detection_cb)
 
@@ -130,6 +135,7 @@ class OffboardNode:
         is_safe = True
         for box in msg.bounding_boxes:
             if box.Class in self.targets_to_avoid and box.dist <= self.safe_dist:
+                self.danger_counter += 1
                 self.safe_counter = 0
                 self.EMERGENCY = True
                 is_safe = False
@@ -139,6 +145,38 @@ class OffboardNode:
             if self.safe_counter >= self.safe_counter_threshold:
                 self.safe_counter = 0
                 self.EMERGENCY = False
+        if self.danger_counter >= self.danger_counter_threshold:
+            if not self.EMERGENCY_LANDING:
+                rospy.logwarn("EMERGENCY LANDING")
+                dir_vector = np.zeros(2)
+                for box in msg.bounding_boxes:
+                    if box.dist < self.emergency_land_dist:
+                        x1_im, y1_im, x2_im, y2_im = (
+                            float(box.xmin),
+                            float(box.ymin),
+                            float(box.xmax),
+                            float(box.ymax),
+                        )
+                        xc_im = x1_im + (x2_im - x1_im) / 2
+                        yc_im = y1_im + (y2_im - y1_im) / 2
+                        # move from image coordinates to world coordinates
+                        #          x|
+                        #           |
+                        #           |
+                        #     y -----
+                        xc_world = -yc_im + self.img_size / 2
+                        yc_world = -xc_im + self.img_size / 2
+                        dir_vector_cmp = np.array([xc_world, yc_world])
+                        rospy.loginfo(f"DIR VEC: {dir_vector_cmp}")
+                        dir_vector += dir_vector_cmp / np.linalg.norm(dir_vector_cmp)
+                # normalize directional vector and scale to desired length (meters)
+                dir_vector = dir_vector / np.linalg.norm(dir_vector)
+                dir_vector = -dir_vector
+                self.prelanding_pos[:2] += dir_vector * np.sqrt(self.emergency_land_dist)
+                self.prelanding_pos[2] = self.safe_retreat_position[2]
+                rospy.logwarn(f"Dodging directional vector: {dir_vector}")
+                rospy.logwarn(f"Resort to emergency landing, new prelanding position: {self.prelanding_pos}")
+                self.EMERGENCY_LANDING = True
 
     def wait_for_FCU_connection(self):
         """
@@ -249,20 +287,22 @@ class OffboardNode:
                     next_pos = self.get_next_pos()
 
             elif self.flight_mode == FlightMode.PRE_LANDING:
-                if self.EMERGENCY:
+                if self.EMERGENCY and not self.EMERGENCY_LANDING:
                     self.flight_mode = FlightMode.EMERGENCY_RETREAT
                     next_pos = self.safe_retreat_position
-                elif self.position_reached(self.prelanding_pos):
+                else:
+                    next_pos = self.prelanding_pos
+                if self.position_reached(self.prelanding_pos):
                     self.flight_mode = FlightMode.LANDING
                     next_pos = None
                     self.land()
                     # next_pos = self.home_pos
-                else:
-                    next_pos = self.prelanding_pos
 
             elif self.flight_mode == FlightMode.EMERGENCY_RETREAT:
-                rospy.logwarn(f"A person is in close vicinity, retreat to safe position {self.safe_retreat_position}")
-                if self.EMERGENCY:
+                if self.EMERGENCY and not self.EMERGENCY_LANDING:
+                    rospy.logwarn(
+                        f"A person is in close vicinity, retreat to safe position {self.safe_retreat_position}"
+                    )
                     next_pos = self.safe_retreat_position
                 else:
                     self.flight_mode = FlightMode.PRE_LANDING
