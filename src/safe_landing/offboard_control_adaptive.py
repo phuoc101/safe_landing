@@ -5,6 +5,7 @@
 
 import numpy as np
 import numpy.linalg as la
+from scipy.optimize import minimize
 
 import rospy
 from geometry_msgs.msg import PoseStamped
@@ -41,11 +42,11 @@ class OffboardNode:
         self.safe_retreat_position = np.array([0, 0, 2.5]) + self.home_pos
         # If some people is in close vicinity, don't land (TODO: animal lives matter, but need more data)
         self.safe_dist = 3
-        self.emergency_land_dist = 2
+        self.emergency_land_dist = 1
         self.targets_to_avoid = ["person"]
         # land after enough msgs without danger
         self.safe_counter_threshold = 20
-        self.danger_counter_threshold = 100
+        self.danger_counter_threshold = 300
 
         rospy.loginfo(self.mission_info())
 
@@ -142,15 +143,16 @@ class OffboardNode:
                 break
         if is_safe:
             self.safe_counter += 1
+            self.danger_counter = 0
             if self.safe_counter >= self.safe_counter_threshold:
                 self.safe_counter = 0
                 self.EMERGENCY = False
         if self.danger_counter >= self.danger_counter_threshold:
             if not self.EMERGENCY_LANDING:
                 rospy.logwarn("EMERGENCY LANDING")
-                dir_vector = np.zeros(2)
+                dir_vectors = []
                 for box in msg.bounding_boxes:
-                    if box.dist < self.emergency_land_dist:
+                    if box.Class in self.targets_to_avoid and box.dist <= self.safe_dist:
                         x1_im, y1_im, x2_im, y2_im = (
                             float(box.xmin),
                             float(box.ymin),
@@ -166,15 +168,43 @@ class OffboardNode:
                         #     y -----
                         xc_world = -yc_im + self.img_size / 2
                         yc_world = -xc_im + self.img_size / 2
-                        dir_vector_cmp = np.array([xc_world, yc_world])
-                        rospy.loginfo(f"DIR VEC: {dir_vector_cmp}")
-                        dir_vector += dir_vector_cmp / np.linalg.norm(dir_vector_cmp)
-                # normalize directional vector and scale to desired length (meters)
-                dir_vector = dir_vector / np.linalg.norm(dir_vector)
-                dir_vector = -dir_vector
-                self.prelanding_pos[:2] += dir_vector * np.sqrt(self.emergency_land_dist)
+                        dir_vector_pix = np.array([xc_world, yc_world])
+                        dir_vector_norm_scaled = dir_vector_pix / np.linalg.norm(dir_vector_pix) * box.dist
+                        rospy.loginfo(f"DIR VEC: {dir_vector_norm_scaled}")
+                        dir_vectors.append(dir_vector_norm_scaled)
+                dir_vectors = np.array(dir_vectors)
+                # Solve optimization problem
+                # Generate constraints: distance to each points is at least 0.5 (can be tuned)
+                _tmp = []
+                for x, y in dir_vectors:
+                    _tmp.append(
+                        {"type": "ineq", "fun": lambda t, x=x, y=y: np.linalg.norm([(t[0] - x), (t[1] - y)]) - 0.5}
+                    )
+                _tmp.append({"type": "ineq", "fun": lambda t: 1 - t[0] ** 2 - t[1] ** 2})
+                constraints = tuple(_tmp)
+
+                # Maximize distance to all available points by minimizing the negative of it
+                def func2minimize(X):
+                    alpha = 1
+                    return -np.sum(
+                        np.linalg.norm(dir_vectors - X, axis=1) * 1 / (np.linalg.norm(dir_vectors, axis=1)) ** alpha
+                    )
+
+                # Optimize with Sequential Least SQuares Programming (SLSQP) optimizer
+                x0 = [0.01, 0.01]
+                xopt = minimize(
+                    fun=func2minimize,
+                    x0=x0,
+                    method="SLSQP",
+                    bounds=[[-1, 1], [-1, 1]],
+                    constraints=constraints,
+                    tol=1e-10,
+                )
+                dir_vector_optim = xopt.x
+                rospy.logwarn(f"Dodging directional vector: {dir_vector_optim}")
+
+                self.prelanding_pos[:2] += dir_vector_optim * self.emergency_land_dist
                 self.prelanding_pos[2] = self.safe_retreat_position[2]
-                rospy.logwarn(f"Dodging directional vector: {dir_vector}")
                 rospy.logwarn(f"Resort to emergency landing, new prelanding position: {self.prelanding_pos}")
                 self.EMERGENCY_LANDING = True
 
